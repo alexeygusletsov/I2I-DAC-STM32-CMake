@@ -32,14 +32,6 @@
 const char* promt = "trps$>";
 const char* start = "\rTPRS has started.\r";
 
-// serial_data_t serial = {
-//   .tx_buffer = {'\0'},
-//   .rx_buffer = {'\0'},
-//   .rx_count = 0,
-//   .tx_count = 0,
-//   .ch = 0
-// };
-
 typedef struct _rx_buffer_t_ {
     uint8_t data[RX_BUFFER_SIZE];
     size_t count;
@@ -58,11 +50,9 @@ volatile flags_t flags = {
 
 Parameters_t params;
 
-uint16_t input_value;
 uint16_t DAC_input[USER_DAC_NUMBER];
 uint16_t bufferADC = 0;
 uint8_t counterADC = 0;
-// volatile uint16_t freqADC = 0;
 
 node_t nodes[] = {
 		{ HELP_CMD,    NULL,              NULL,              (f_t)HANDLER_NAME(help) },
@@ -112,13 +102,10 @@ void HandleTransmit(void)
 void HandleADCReady(void)
 {
     flags.ADC_Ready = 1;
-    // BOARD_LEDToggle(LED1);
-    // freqADC++;
 }
 
 void process1HzTask(void)
 {
-    // freqADC = 0;
 }
 
 int Send_response(uint8_t* buf, size_t size) {
@@ -171,7 +158,6 @@ int main(void)
     // Init DACs
     for(int i = 0; i < USER_DAC_NUMBER; i++) {
     	  InitDAC(i, &params.points[i][0]);
-    	//   InitCoefs(i);
     }
     flash_status_t status = UpdateFlash((const uint8_t*)&params, sizeof(Parameters_t));
     if(status != FLASH_OK) {
@@ -194,8 +180,6 @@ int main(void)
     StartReceive(&recv_byte, sizeof(recv_byte));
 
     // Initiate start message
-    // snprintf((char*)serial.tx_buffer, sizeof(serial.tx_buffer), "%s", start);
-    // serial.tx_count = strlen((const char*)serial.tx_buffer);
     TRACE_UART("%s", start);
    
     BOARD_ADC_Start();
@@ -214,11 +198,11 @@ int main(void)
             flags.ADC_Ready = 0;
             bufferADC = BOARD_ADC_Result();
             if((++counterADC % 2) == 0) {
-                input_value = ADC2mA(bufferADC);
+                uint16_t input_value = ADC2mA(bufferADC);
                 LED_Service(input_value, params.levels);
                 for(int i = 0; i < USER_DAC_NUMBER; i++) {
-                    float tune = (float)bufferADC * params.k[i] + params.b[i];
-                    DAC_input[i] = DAC_Write(i, (uint16_t)tune);
+                    DAC_input[i] = DAC_Tune(bufferADC, params.k[i], params.b[i]);
+                    DAC_Write(i, DAC_input[i]);
                 }
             }
             BOARD_ADC_Start();
@@ -229,36 +213,14 @@ int main(void)
 
             if(Parse(rx_buffer.data, rx_buffer.count, recv_byte) == 1) {
                 Handle_command(&nodes, rx_buffer.data, Send_response);
-                rx_buffer.count = 0;
+                rx_buffer.count = 0; // reset counter
             } else {
+                // Move counter by 1
                 rx_buffer.count = (rx_buffer.count + 1) % RX_BUFFER_SIZE;
             }
-            
-            // serial.rx_buffer[serial.rx_count] = recv_byte;
-            // if(serial.rx_buffer[serial.rx_count] == '\r') {
-            //     serial.rx_buffer[serial.rx_count] = '\0';
-            //     Handle_command(&nodes, &serial);
-            //     serial.rx_count = 0;
-            //     strncat((char*)serial.tx_buffer, promt,
-            //             sizeof(serial.tx_buffer) - strlen((char*)serial.tx_buffer) - 1);
-            //     serial.tx_count += strlen(promt);
-            // } else if(++serial.rx_count == sizeof(serial.rx_buffer) - 1) {
-            //     memset((void*)serial.rx_buffer, 0, sizeof(serial.rx_buffer));
-            //     serial.rx_count = 0;
-            //     snprintf((char*)serial.tx_buffer, sizeof(serial.tx_buffer), "Too long command.\r");
-            //     serial.tx_count = strlen((const char*)serial.tx_buffer);
-            // } else {
-            //     // Nothing to do
-            // }
-
+            // Continue receiving
             ReceiveData(&recv_byte, sizeof(recv_byte));
         }
-        // Send response
-        // if((serial.tx_count > 0) && flags.tx_ready) {
-        //     flags.tx_ready = 0;
-        //     assert_param(BOARD_Send_IT((const uint8_t*)serial.tx_buffer, serial.tx_count) == 0);
-        //     serial.tx_count = 0;
-        // }
     }
     // Shoul not get there
     assert_param(0);

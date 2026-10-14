@@ -122,7 +122,7 @@ void LED_Switch(led_t led);
 void LED_Alarm(led_state_t state);
 void LED_Service(uint16_t data, const uint16_t *levels);
 uint16_t DAC_Write(User_DAC_Num_t n, uint16_t data);
-// void Tune(User_DAC_Num_t n, uint16_t *data);
+uint16_t DAC_Tune(uint16_t in, float k, int16_t b);
 void InitCoefs(User_DAC_Num_t n);
 void EnableDAC(User_DAC_Num_t dac);
 void DisableDAC(User_DAC_Num_t dac);

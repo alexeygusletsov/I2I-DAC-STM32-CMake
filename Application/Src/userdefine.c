@@ -116,15 +116,6 @@ void InitCoefs(User_DAC_Num_t n)
 	coefficients[n].k2 = Init_K2(n);
 }
 
-// void Tune(User_DAC_Num_t n, uint16_t *data)
-// {
-// 	int32_t temp = *data;
-// 	temp -= dacs[n].measures[0].adc;
-// 	temp *= coefficients[n].k2;
-// 	temp += coefficients[n].b2;
-// 	*data = temp > 0 ? temp : 0;
-// }
-
 void InitDAC(User_DAC_Num_t n, Pair_t *m)
 {
 	DisableDAC(n);
@@ -207,27 +198,24 @@ void LED_Switch(led_t led) {
 
 uint16_t DAC_Write(User_DAC_Num_t n, uint16_t data)
 {
-	uint16_t ret;
-
 	uint8_t buffer[2];
+	uint16_t ret = data;
 
-	//Tune(n, &data);
-
-	ret = data;
-
-	// if(flags.SPI_Ready != 0) {
-		// flags.SPI_Ready = 0; // reset flag, get busy
-		// buffer[0] = 0; // set normal mode
-		data ^= -1; // inverse bits
-		buffer[0] = 0xC0; // set normal mode
-		buffer[0] |= data >> 4; // take high 6 bits because data has only 10 bits
-		buffer[1] = (data << 4) | 0x0F; // take low 4 bits so that they take positions form 7 to 4
-		EnableDAC(n);
-		BOARD_SPI_Send(buffer, sizeof(buffer));
-		// while(!flags.SPI_Ready) {};
-		DisableDAC(n);
-	// }
+	data ^= -1; // inverse bits
+	buffer[0] = 0xC0; // set normal mode
+	buffer[0] |= data >> 4; // take high 6 bits because data has only 10 bits
+	buffer[1] = (data << 4) | 0x0F; // take low 4 bits so that they take positions form 7 to 4
+	EnableDAC(n);
+	BOARD_SPI_Send(buffer, sizeof(buffer));
+	DisableDAC(n);
+	
 	return ret;
+}
+
+uint16_t DAC_Tune(uint16_t in, float k, int16_t b)
+{
+	float ret = (float)in * k + b;
+    return (uint16_t)ret;
 }
 
 uint16_t ADC2mA(uint16_t adc)
