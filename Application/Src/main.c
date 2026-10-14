@@ -32,13 +32,20 @@
 const char* promt = "trps$>";
 const char* start = "\rTPRS has started.\r";
 
-serial_data_t serial = {
-  .tx_buffer = {'\0'},
-  .rx_buffer = {'\0'},
-  .rx_count = 0,
-  .tx_count = 0,
-  .ch = 0
-};
+// serial_data_t serial = {
+//   .tx_buffer = {'\0'},
+//   .rx_buffer = {'\0'},
+//   .rx_count = 0,
+//   .tx_count = 0,
+//   .ch = 0
+// };
+
+typedef struct _rx_buffer_t_ {
+    uint8_t data[RX_BUFFER_SIZE];
+    size_t count;
+} rx_buffer_t;
+
+rx_buffer_t rx_buffer;
 
 volatile flags_t flags = {
     .rx_flag = 0,
@@ -114,12 +121,26 @@ void process1HzTask(void)
     // freqADC = 0;
 }
 
+int Send_response(uint8_t* buf, size_t size) {
+    if(flags.tx_ready) {
+        flags.tx_ready = 0;
+        strncat((char*)buf, promt,
+                sizeof(size) - strlen((char*)buf) - 1);
+        assert_param(BOARD_Send_IT(buf, strlen((char*)buf)) == 0);
+        return 0;
+    } else {
+        return -1;
+    }
+}
+
 /**
  * @brief  The application entry point.
  * @retval int
  */
 int main(void)
 {
+    uint8_t recv_byte;
+
     HAL_Init();
 
     SystemClock_Config();
@@ -165,13 +186,17 @@ int main(void)
     flags.rx_flag = 0;
     flags.overrun = 0;
 
-    // Clear rx buffer and start to receive
-    memset((void*)serial.rx_buffer, 0, sizeof(serial.rx_buffer));
-    StartReceive((uint8_t*)&serial.rx_buffer[0], 1);
+    // Clear rx buffer
+    rx_buffer.count = 0;
+    memset((void*)rx_buffer.data, 0, RX_BUFFER_SIZE);
+
+    // Start to receive
+    StartReceive(&recv_byte, sizeof(recv_byte));
 
     // Initiate start message
-    snprintf((char*)serial.tx_buffer, sizeof(serial.tx_buffer), "%s", start);
-    serial.tx_count = strlen((const char*)serial.tx_buffer);
+    // snprintf((char*)serial.tx_buffer, sizeof(serial.tx_buffer), "%s", start);
+    // serial.tx_count = strlen((const char*)serial.tx_buffer);
+    TRACE_UART("%s", start);
    
     BOARD_ADC_Start();
 
@@ -184,12 +209,7 @@ int main(void)
             tickstart = HAL_GetTick();
             process1HzTask();
         }
-
-        if((serial.tx_count > 0) && flags.tx_ready) {
-            flags.tx_ready = 0;
-            assert_param(BOARD_Send_IT((const uint8_t*)serial.tx_buffer, serial.tx_count) == 0);
-            serial.tx_count = 0;
-        }
+        // Serve ADC
         if(flags.ADC_Ready) {
             flags.ADC_Ready = 0;
             bufferADC = BOARD_ADC_Result();
@@ -203,26 +223,42 @@ int main(void)
             }
             BOARD_ADC_Start();
         }
-        if(!flags.rx_flag) {
-            continue;
+        // Receive request
+        if(flags.rx_flag) {
+            flags.rx_flag = 0;
+
+            if(Parse(rx_buffer.data, rx_buffer.count, recv_byte) == 1) {
+                Handle_command(&nodes, rx_buffer.data, Send_response);
+                rx_buffer.count = 0;
+            } else {
+                rx_buffer.count = (rx_buffer.count + 1) % RX_BUFFER_SIZE;
+            }
+            
+            // serial.rx_buffer[serial.rx_count] = recv_byte;
+            // if(serial.rx_buffer[serial.rx_count] == '\r') {
+            //     serial.rx_buffer[serial.rx_count] = '\0';
+            //     Handle_command(&nodes, &serial);
+            //     serial.rx_count = 0;
+            //     strncat((char*)serial.tx_buffer, promt,
+            //             sizeof(serial.tx_buffer) - strlen((char*)serial.tx_buffer) - 1);
+            //     serial.tx_count += strlen(promt);
+            // } else if(++serial.rx_count == sizeof(serial.rx_buffer) - 1) {
+            //     memset((void*)serial.rx_buffer, 0, sizeof(serial.rx_buffer));
+            //     serial.rx_count = 0;
+            //     snprintf((char*)serial.tx_buffer, sizeof(serial.tx_buffer), "Too long command.\r");
+            //     serial.tx_count = strlen((const char*)serial.tx_buffer);
+            // } else {
+            //     // Nothing to do
+            // }
+
+            ReceiveData(&recv_byte, sizeof(recv_byte));
         }
-        if(serial.rx_buffer[serial.rx_count] == '\r') {
-            serial.rx_buffer[serial.rx_count] = '\0';
-            Handle_command(&nodes, &serial);
-            serial.rx_count = 0;
-            strncat((char*)serial.tx_buffer, promt,
-                    sizeof(serial.tx_buffer) - strlen((char*)serial.tx_buffer) - 1);
-            serial.tx_count += strlen(promt);
-        } else if(++serial.rx_count == sizeof(serial.rx_buffer) - 1) {
-            memset((void*)serial.rx_buffer, 0, sizeof(serial.rx_buffer));
-            serial.rx_count = 0;
-            snprintf((char*)serial.tx_buffer, sizeof(serial.tx_buffer), "Too long command.\r");
-            serial.tx_count = strlen((const char*)serial.tx_buffer);
-        } else {
-            // Nothing to do
-        }
-        flags.rx_flag = 0;
-        ReceiveData((uint8_t*)&serial.rx_buffer[serial.rx_count], 1);
+        // Send response
+        // if((serial.tx_count > 0) && flags.tx_ready) {
+        //     flags.tx_ready = 0;
+        //     assert_param(BOARD_Send_IT((const uint8_t*)serial.tx_buffer, serial.tx_count) == 0);
+        //     serial.tx_count = 0;
+        // }
     }
     // Shoul not get there
     assert_param(0);
@@ -293,9 +329,11 @@ void Error_Handler(void) {
  * @retval None
  */
 void assert_failed(uint8_t *file, uint32_t line) {
-    snprintf((char*)serial.tx_buffer, sizeof(serial.tx_buffer),
+    const size_t size = 256;
+    char buffer[size];
+    snprintf(buffer, sizeof(buffer),
       "Assertion failed: file %s on line %lu\r\n", (char*)file, line);
-    BOARD_Send((const uint8_t*)serial.tx_buffer, strlen((const char*)serial.tx_buffer), 1000);
+    BOARD_Send((const uint8_t*)buffer, strlen((const char*)buffer), 1000);
     Error_Handler();
 }
 #endif

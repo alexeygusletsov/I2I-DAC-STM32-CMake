@@ -22,61 +22,76 @@ const char* help = "i - read current in [ mA x SCALE ]\r"
                    "u - update flash\r"
                    "h - print help\r";
 
-void Handle_command(void *p1, void *p2)
+int Parse(uint8_t* buf, size_t pos, uint8_t recv_byte)
+{
+    buf[pos] = recv_byte;
+    if(buf[pos] == '\r') {
+        buf[pos] = '\0';
+        return 1;
+    } else {
+        return 0;
+    }
+}
+
+void Handle_command(void *p1, const uint8_t* rx_buffer, sender_t sender)
 {
 	node_t *nodes = (node_t*)p1;
-	serial_data_t *serial = (serial_data_t*)p2;
+	uint8_t tx_buffer[TX_BUFFER_SIZE];
 
 	while(nodes->command_code != NULL_CMD) {
-		if(serial->rx_buffer[0] == nodes->command_code) {
+		if(rx_buffer[0] == nodes->command_code) {
 			if(nodes->handler) {
-				nodes->handler(nodes, serial);
+				nodes->handler(nodes, rx_buffer, tx_buffer);
+				sender(tx_buffer, TX_BUFFER_SIZE);
 			}
 			return;
 		}
 		++nodes;
 	}
 	// Command not found
-	snprintf((char*)serial->tx_buffer, TX_BUFFER_SIZE, invalid, serial->rx_buffer);
-	serial->tx_count = strlen((char*)serial->tx_buffer);
+	snprintf((char*)tx_buffer, TX_BUFFER_SIZE, invalid, rx_buffer);
+	// serial->tx_count = strlen((char*)serial->tx_buffer);
+	sender(tx_buffer, TX_BUFFER_SIZE);
 }
 
-void help_handler(node_t *node, serial_data_t *serial)
+void help_handler(node_t *node, const uint8_t* rx_buffer, uint8_t* tx_buffer)
 {
-	snprintf((char*)serial->tx_buffer, TX_BUFFER_SIZE, "%s\r\n", help);
-	serial->tx_count = strlen((char*)serial->tx_buffer);
+	snprintf((char*)tx_buffer, TX_BUFFER_SIZE, "%s\r\n", help);
+	// serial->tx_count = strlen((char*)serial->tx_buffer);
 }
 
-void version_handler(node_t *node, serial_data_t *serial)
+void version_handler(node_t *node, const uint8_t* rx_buffer, uint8_t* tx_buffer)
 {
-	snprintf((char*)serial->tx_buffer, TX_BUFFER_SIZE, "%s\r\n", version);
-	serial->tx_count = strlen((char*)serial->tx_buffer);
+	snprintf((char*)tx_buffer, TX_BUFFER_SIZE, "%s\r\n", version);
+	// serial->tx_count = strlen((char*)serial->tx_buffer);
 }
 
-void name_handler(node_t *node, serial_data_t *serial)
+void name_handler(node_t *node, const uint8_t* rx_buffer, uint8_t* tx_buffer)
 {
-    snprintf((char*)serial->tx_buffer, TX_BUFFER_SIZE, "%s\r\n", name);
-	serial->tx_count = strlen((char*)serial->tx_buffer);
+    snprintf((char*)tx_buffer, TX_BUFFER_SIZE, "%s\r\n", name);
+	// serial->tx_count = strlen((char*)serial->tx_buffer);
 }
 
-void read_adc_handler(node_t *node, serial_data_t *serial)
+void read_adc_handler(node_t *node, const uint8_t* rx_buffer, uint8_t* tx_buffer)
 {
 	uint16_t value = *((uint16_t*)node->param_1);
-	snprintf((char*)serial->tx_buffer, TX_BUFFER_SIZE, "%04X\r\n", value);
-	serial->tx_count = strlen((char*)serial->tx_buffer);
+	snprintf((char*)tx_buffer, TX_BUFFER_SIZE, "%04X\r\n", value);
+	// serial->tx_count = strlen((char*)serial->tx_buffer);
 }
 
-void read_current_handler(node_t *node, serial_data_t *serial)
+void read_current_handler(node_t *node, const uint8_t* rx_buffer, uint8_t* tx_buffer)
 {
 	uint16_t value = ADC2mA(*((uint16_t*)node->param_1));
-	serial->tx_count = snprintf((char*)serial->tx_buffer, TX_BUFFER_SIZE, "%hu\r", value);
+	// serial->tx_count = snprintf((char*)serial->tx_buffer, TX_BUFFER_SIZE, "%hu\r", value);
+	snprintf((char*)tx_buffer, TX_BUFFER_SIZE, "%hu\r", value);
 }
 
-void update_handler(node_t *node, serial_data_t *serial)
+void update_handler(node_t *node, const uint8_t* rx_buffer, uint8_t* tx_buffer)
 {
+	char ch;
 	uint16_t value; // channel number
 	const uint8_t number_expexted = 2;
-	if(sscanf((char*)serial->rx_buffer, "%c %hu", &serial->ch, &value) == number_expexted) {
+	if(sscanf((const char*)rx_buffer, "%c %hu", &ch, &value) == number_expexted) {
 		if(value < USER_DAC_NUMBER) {
 			Parameters_t *params = (Parameters_t*)node->param_1;
 			float R = (params->points[value][1].mA - params->points[value][0].mA) / (params->points[value][1].adc - params->points[value][0].adc);
@@ -84,38 +99,42 @@ void update_handler(node_t *node, serial_data_t *serial)
 			params->b[value] = (float)(400 / R) - params->points[value][0].adc * params->k[value];
 			flash_status_t status = UpdateFlash((const uint8_t*)params, sizeof(Parameters_t));
 			if(status != FLASH_OK) {
-				snprintf((char*)serial->tx_buffer, TX_BUFFER_SIZE, "Writing data flash failed (%d)\r", status);
+				snprintf((char*)tx_buffer, TX_BUFFER_SIZE, "Writing data flash failed (%d)\r", status);
 			} else {
-				snprintf((char*)serial->tx_buffer, TX_BUFFER_SIZE, "Done\r");
+				snprintf((char*)tx_buffer, TX_BUFFER_SIZE, "Done\r");
 			}
-			serial->tx_count = strlen((char*)serial->tx_buffer);
+			// serial->tx_count = strlen((char*)serial->tx_buffer);
 		}
 	}
 }
 
-void dac_handler(node_t *node, serial_data_t *serial)
+void dac_handler(node_t *node, const uint8_t* rx_buffer, uint8_t* tx_buffer)
 {
+	char ch;
 	uint16_t value;
 	const uint8_t number_expected = 2;
-	if(sscanf((char*)serial->rx_buffer, "%c %hu", &serial->ch, &value) == number_expected) {
+	if(sscanf((const char*)rx_buffer, "%c %hu", &ch, &value) == number_expected) {
 		if(value < USER_DAC_NUMBER) {
 			value = ((uint16_t*)node->param_1)[value];
-			serial->tx_count = snprintf((char*)serial->tx_buffer, TX_BUFFER_SIZE, "%04X\r", value);
+			// serial->tx_count = snprintf((char*)serial->tx_buffer, TX_BUFFER_SIZE, "%04X\r", value);
+			snprintf((char*)tx_buffer, TX_BUFFER_SIZE, "%04X\r", value);
 		}
 	}
 }
 
-void point_handler(node_t *node, serial_data_t *serial)
+void point_handler(node_t *node, const uint8_t* rx_buffer, uint8_t* tx_buffer)
 {
+	char ch;
 	uint16_t value;
 	const uint8_t number_expected = 2;
 	Parameters_t *params = (Parameters_t*)node->param_1;
 	uint16_t *bufferADC = (uint16_t*)node->param_2;
-	int result = sscanf((char*)serial->rx_buffer, "%c %hu", &serial->ch, &value);
-	uint8_t i = SYMBOL_TO_CHANNEL(serial->ch);
-	uint8_t j = SYMBOL_TO_POINT(serial->ch);
+	int result = sscanf((const char*)rx_buffer, "%c %hu", &ch, &value);
+	uint8_t i = SYMBOL_TO_CHANNEL(ch);
+	uint8_t j = SYMBOL_TO_POINT(ch);
 	if(i >= USER_DAC_NUMBER || j >= MEASURES_NUMBER) {
-		serial->tx_count = snprintf((char*)serial->tx_buffer, TX_BUFFER_SIZE, invalid, serial->rx_buffer);
+		// serial->tx_count = snprintf((char*)serial->tx_buffer, TX_BUFFER_SIZE, invalid, serial->rx_buffer);
+		snprintf((char*)tx_buffer, TX_BUFFER_SIZE, invalid, rx_buffer);
 		return;
 	}
 	if(result == number_expected) {
@@ -130,48 +149,50 @@ void point_handler(node_t *node, serial_data_t *serial)
 		 */
 		params->points[i][j].mA = value;
 		params->points[i][j].adc = *bufferADC;
-		snprintf((char*)serial->tx_buffer, TX_BUFFER_SIZE, "Enter the command 'u' to update\r");
+		snprintf((char*)tx_buffer, TX_BUFFER_SIZE, "Enter the command 'u' to update\r");
 	} else {
 		value = params->points[i][j].mA;
-		snprintf((char*)serial->tx_buffer, TX_BUFFER_SIZE, "%hu\r", value);
+		snprintf((char*)tx_buffer, TX_BUFFER_SIZE, "%hu\r", value);
 	}
-	serial->tx_count = strlen((char*)serial->tx_buffer);
+	// serial->tx_count = strlen((char*)serial->tx_buffer);
 }
 
-void level_handler(node_t *node, serial_data_t *serial)
+void level_handler(node_t *node, const uint8_t* rx_buffer, uint8_t* tx_buffer)
 {
+	char ch;
 	uint16_t value;
 	Parameters_t *params = (Parameters_t*)node->param_1;
-	levels_t level = Get_Level(serial->rx_buffer[0]);
-	if(sscanf((char*)serial->rx_buffer, "%c %hu", &serial->ch, &value) == 2) {
+	levels_t level = Get_Level(rx_buffer[0]);
+	if(sscanf((const char*)rx_buffer, "%c %hu", &ch, &value) == 2) {
 		uint16_t levels[LEVELS_NUMBER];
 		memcpy(&levels, &params->levels, sizeof(levels));
 		levels[(int)level] = value;
 		if(Is_Sorted(levels, sizeof(levels)/sizeof(uint16_t))) {
 			params->levels[(int)level] = value;
-			snprintf((char*)serial->tx_buffer, TX_BUFFER_SIZE, "Enter the command 'u' to update\r");
+			snprintf((char*)tx_buffer, TX_BUFFER_SIZE, "Enter the command 'u' to update\r");
 		} else {
-			snprintf((char*)serial->tx_buffer, TX_BUFFER_SIZE, "Invalid argument\r");
+			snprintf((char*)tx_buffer, TX_BUFFER_SIZE, "Invalid argument\r");
 		}
 	} else {
 		value = params->levels[(int)level];
-		snprintf((char*)serial->tx_buffer, TX_BUFFER_SIZE, "%hu\r", value);
+		snprintf((char*)tx_buffer, TX_BUFFER_SIZE, "%hu\r", value);
 	}
-	serial->tx_count = strlen((char*)serial->tx_buffer);
+	// serial->tx_count = strlen((char*)serial->tx_buffer);
 }
 
-void reset_handler(node_t *node, serial_data_t *serial)
+void reset_handler(node_t *node, const uint8_t* rx_buffer, uint8_t* tx_buffer)
 {
 	Parameters_t *params = (Parameters_t*)node->param_1;
 	CalibrationReset(params);
 	for(int i = 0; i < USER_DAC_NUMBER; i++) {
 		InitDAC(i, &(params->points[i][0]));
 	}
-	serial->tx_count = snprintf((char*)serial->tx_buffer, TX_BUFFER_SIZE, "Enter the command 'u' to update\r");
+	// serial->tx_count = snprintf((char*)serial->tx_buffer, TX_BUFFER_SIZE, "Enter the command 'u' to update\r");
+	snprintf((char*)tx_buffer, TX_BUFFER_SIZE, "Enter the command 'u' to update\r");
 }
 
-void test_handler(node_t *node, serial_data_t *serial)
+void test_handler(node_t *node, const uint8_t* rx_buffer, uint8_t* tx_buffer)
 {
-	snprintf((char*)serial->tx_buffer, TX_BUFFER_SIZE, "Test\r");
-	serial->tx_count = strlen((char*)serial->tx_buffer);
+	snprintf((char*)tx_buffer, TX_BUFFER_SIZE, "Test\r");
+	// serial->tx_count = strlen((char*)serial->tx_buffer);
 }

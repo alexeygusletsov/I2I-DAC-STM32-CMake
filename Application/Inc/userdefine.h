@@ -109,7 +109,7 @@ extern const Coef_t coefs_in_flash __attribute__((__section__(".user_data")));
 #define SYMBOL_TO_CHANNEL(ch) ((ch - 'a') / 2)
 #define SYMBOL_TO_POINT(ch)   ((ch - 'a') % 2)
 
-typedef void(*f_t)(void*, void*);
+typedef void(*f_t)(void*, const uint8_t*, uint8_t*);
 typedef void* param_t;
 typedef struct _node_ {
 	uint8_t command_code;
