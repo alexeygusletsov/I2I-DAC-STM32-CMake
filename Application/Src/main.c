@@ -48,6 +48,8 @@ volatile flags_t flags = {
 	  .tx_ready = 1
 };
 
+uint8_t recv_byte;
+
 Parameters_t params;
 
 uint16_t DAC_input[USER_DAC_NUMBER];
@@ -89,9 +91,11 @@ void ReceiveData(uint8_t *data, uint16_t size)
     StartReceive(data, size);
 }
 
-void HandleReceive(void)
+void HandleReceive(void* param)
 {
+    uint8_t* byte = (uint8_t*)param;
     flags.rx_flag = 1;
+    rx_buffer.data[rx_buffer.count] = *byte;
 }
 
 void HandleTransmit(void)
@@ -109,10 +113,11 @@ void process1HzTask(void)
 }
 
 int Send_response(uint8_t* buf, size_t size) {
+    assert_param(size - strlen((char*)buf) > 1);
     if(flags.tx_ready) {
         flags.tx_ready = 0;
         strncat((char*)buf, promt,
-                sizeof(size) - strlen((char*)buf) - 1);
+                size - strlen((char*)buf) - 1);
         assert_param(BOARD_Send_IT(buf, strlen((char*)buf)) == 0);
         return 0;
     } else {
@@ -126,15 +131,13 @@ int Send_response(uint8_t* buf, size_t size) {
  */
 int main(void)
 {
-    uint8_t recv_byte;
-
     HAL_Init();
 
     SystemClock_Config();
     SysTick_Config(SystemCoreClock/1000);
 
     BOARD_RegisterTxCallBack(HandleTransmit);
-    BOARD_RegisterRxCallBack(HandleReceive);
+    BOARD_RegisterRxCallBack(HandleReceive, &recv_byte);
     BOARD_RegisterADCCallBack(HandleADCReady);
 
     BOARD_Init();
@@ -211,7 +214,7 @@ int main(void)
         if(flags.rx_flag) {
             flags.rx_flag = 0;
 
-            if(Parse(rx_buffer.data, rx_buffer.count, recv_byte) == 1) {
+            if(Parse(rx_buffer.data, rx_buffer.count) == 1) {
                 Handle_command(&nodes, rx_buffer.data, Send_response);
                 rx_buffer.count = 0; // reset counter
             } else {

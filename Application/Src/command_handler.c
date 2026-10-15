@@ -7,7 +7,6 @@
 
 const char* version = GIT_DESCRIBE;
 const char* name = DEVICE_NAME;
-// const char* invalid = "Invalid command: %s\r";
 const char* invalid = "Invalid command: ";
 const char* help = "i - read current in [ mA x SCALE ]\r"
                    "x - read ADC output\r"
@@ -22,9 +21,8 @@ const char* help = "i - read current in [ mA x SCALE ]\r"
                    "u - update flash\r"
                    "h - print help\r";
 
-int Parse(uint8_t* buf, size_t pos, uint8_t recv_byte)
+int Parse(uint8_t* buf, size_t pos)
 {
-    buf[pos] = recv_byte;
     if(buf[pos] == '\r') {
         buf[pos] = '\0';
         return 1;
@@ -36,7 +34,7 @@ int Parse(uint8_t* buf, size_t pos, uint8_t recv_byte)
 void Handle_command(void *p1, const uint8_t* rx_buffer, sender_t sender)
 {
 	node_t *nodes = (node_t*)p1;
-	uint8_t tx_buffer[TX_BUFFER_SIZE];
+	static uint8_t tx_buffer[TX_BUFFER_SIZE];
 
 	while(nodes->command_code != NULL_CMD) {
 		if(rx_buffer[0] == nodes->command_code) {
@@ -88,7 +86,7 @@ void update_handler(node_t *node, const uint8_t* rx_buffer, uint8_t* tx_buffer)
 	if(sscanf((const char*)rx_buffer, "%c %hu", &ch, &value) == number_expexted) {
 		if(value < USER_DAC_NUMBER) {
 			Parameters_t *params = (Parameters_t*)node->param_1;
-			float R = (params->points[value][1].mA - params->points[value][0].mA) / (params->points[value][1].adc - params->points[value][0].adc);
+			float R = (float)(params->points[value][1].mA - params->points[value][0].mA) / (params->points[value][1].adc - params->points[value][0].adc);
 			params->k[value] = (float)(1600) / (params->points[value][1].mA - params->points[value][0].mA);
 			params->b[value] = (float)(400 / R) - params->points[value][0].adc * params->k[value];
 			flash_status_t status = UpdateFlash((const uint8_t*)params, sizeof(Parameters_t));
