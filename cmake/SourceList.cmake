@@ -1,6 +1,7 @@
 set(source_list ${source_list}
 ${PROJ_PATH}/Application/Src/main.c
 ${PROJ_PATH}/Application/Src/utils.c
+${PROJ_PATH}/Application/Src/ring_buffer.c
 ${PROJ_PATH}/Application/Src/command_handler.c
 ${PROJ_PATH}/Application/Src/flash.c
 ${PROJ_PATH}/Application/Src/stm32f0xx_it.c

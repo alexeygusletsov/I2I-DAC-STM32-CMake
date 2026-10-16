@@ -21,6 +21,7 @@
 #include "command_handler.h"
 #include "flash.h"
 #include "utils.h"
+#include "ring_buffer.h"
 #include <string.h>
 #include <stdio.h>
 
@@ -32,13 +33,6 @@
 const char* promt = "trps$>";
 const char* start = "\rTPRS has started.\r";
 
-typedef struct _rx_buffer_t_ {
-    uint8_t data[RX_BUFFER_SIZE];
-    size_t count;
-} rx_buffer_t;
-
-rx_buffer_t rx_buffer;
-
 volatile flags_t flags = {
     .rx_flag = 0,
 	  .overrun = 0,
@@ -47,8 +41,6 @@ volatile flags_t flags = {
 	  .Timer100ms_Ready = 0,
 	  .tx_ready = 1
 };
-
-uint8_t recv_byte;
 
 Parameters_t params;
 
@@ -91,11 +83,9 @@ void ReceiveData(uint8_t *data, uint16_t size)
     StartReceive(data, size);
 }
 
-void HandleReceive(void* param)
+void HandleReceive()
 {
-    uint8_t* byte = (uint8_t*)param;
     flags.rx_flag = 1;
-    rx_buffer.data[rx_buffer.count] = *byte;
 }
 
 void HandleTransmit(void)
@@ -110,6 +100,17 @@ void HandleADCReady(void)
 
 void process1HzTask(void)
 {
+}
+
+int Parse(rbuf* buffer, uint8_t byte) {
+    int ret_val = 0;
+    if(byte == '\r') {
+        byte = '\0';
+        ret_val = 1;
+    }
+    rbuf_push(buffer, byte);
+    return ret_val;
+    
 }
 
 int Send_response(uint8_t* buf, size_t size) {
@@ -131,13 +132,18 @@ int Send_response(uint8_t* buf, size_t size) {
  */
 int main(void)
 {
+    uint8_t recv_byte;
+    uint8_t rx_data[RX_BUFFER_SIZE];
+    rbuf* rx_buffer = rbuf_init(rx_data, sizeof(rx_data));
+    assert_param(rx_buffer);
+
     HAL_Init();
 
     SystemClock_Config();
     SysTick_Config(SystemCoreClock/1000);
 
     BOARD_RegisterTxCallBack(HandleTransmit);
-    BOARD_RegisterRxCallBack(HandleReceive, &recv_byte);
+    BOARD_RegisterRxCallBack(HandleReceive);
     BOARD_RegisterADCCallBack(HandleADCReady);
 
     BOARD_Init();
@@ -175,10 +181,6 @@ int main(void)
     flags.rx_flag = 0;
     flags.overrun = 0;
 
-    // Clear rx buffer
-    rx_buffer.count = 0;
-    memset((void*)rx_buffer.data, 0, RX_BUFFER_SIZE);
-
     // Start to receive
     StartReceive(&recv_byte, sizeof(recv_byte));
 
@@ -213,13 +215,9 @@ int main(void)
         // Receive request
         if(flags.rx_flag) {
             flags.rx_flag = 0;
-
-            if(Parse(rx_buffer.data, rx_buffer.count) == 1) {
-                Handle_command(&nodes, rx_buffer.data, Send_response);
-                rx_buffer.count = 0; // reset counter
-            } else {
-                // Move counter by 1
-                rx_buffer.count = (rx_buffer.count + 1) % RX_BUFFER_SIZE;
+            if(Parse(rx_buffer, recv_byte)) {
+                Handle_command(&nodes, rx_data, Send_response);
+                rbuf_reset(rx_buffer); // reset counter
             }
             // Continue receiving
             ReceiveData(&recv_byte, sizeof(recv_byte));

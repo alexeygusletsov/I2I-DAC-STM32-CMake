@@ -50,10 +50,8 @@ typedef enum
   CS3 = 2
 } CS_TypeDef;
 
-typedef void* pUSER_RxParamTypeDef;
-
 typedef void (*pUSER_TxCallbackTypeDef)(void);  /*!< pointer to an USART callback function */
-typedef void (*pUSER_RxCallbackTypeDef)(pUSER_RxParamTypeDef);  /*!< pointer to an USART callback function */
+typedef void (*pUSER_RxCallbackTypeDef)(void);  /*!< pointer to an USART callback function */
 typedef void (*pUSER_ADCCallbackTypeDef)(void);
 
 /**
@@ -170,7 +168,7 @@ void BOARD_CSOn(CS_TypeDef CS);
 void BOARD_CSOff(CS_TypeDef CS);
 void BOARD_UART1Init(void);
 void BOARD_RegisterTxCallBack(pUSER_TxCallbackTypeDef callback);
-void BOARD_RegisterRxCallBack(pUSER_RxCallbackTypeDef callback, pUSER_RxParamTypeDef param);
+void BOARD_RegisterRxCallBack(pUSER_RxCallbackTypeDef callback);
 void BOARD_Init(void);
 
 void BOARD_Send(const uint8_t *buf, uint16_t size, uint32_t timeout);

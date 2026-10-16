@@ -55,8 +55,6 @@ static pUSER_TxCallbackTypeDef User_Tx_CallBack = NULL;
 static pUSER_RxCallbackTypeDef User_Rx_CallBack = NULL;
 static pUSER_ADCCallbackTypeDef User_ADC_CallBack = NULL;
 
-static pUSER_RxParamTypeDef User_Rx_Param = NULL;
-
 /**
   * @}
   */ 
@@ -215,7 +213,7 @@ static void BOARD_Tx_CallBack(UART_HandleTypeDef *husart) {
 
 static void BOARD_Rx_CallBack(UART_HandleTypeDef *husart) {
     if(User_Rx_CallBack) {
-        User_Rx_CallBack(User_Rx_Param);
+        User_Rx_CallBack();
     }
 }
 
@@ -274,10 +272,9 @@ void BOARD_RegisterTxCallBack(pUSER_TxCallbackTypeDef callback)
     User_Tx_CallBack = callback;
 }
 
-void BOARD_RegisterRxCallBack(pUSER_RxCallbackTypeDef callback, pUSER_RxParamTypeDef param)
+void BOARD_RegisterRxCallBack(pUSER_RxCallbackTypeDef callback)
 {
     User_Rx_CallBack = callback;
-    User_Rx_Param = param;
 }
 
 void BOARD_RegisterADCCallBack(pUSER_ADCCallbackTypeDef callback)

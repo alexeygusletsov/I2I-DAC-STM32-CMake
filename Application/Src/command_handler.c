@@ -21,16 +21,6 @@ const char* help = "i - read current in [ mA x SCALE ]\r"
                    "u - update flash\r"
                    "h - print help\r";
 
-int Parse(uint8_t* buf, size_t pos)
-{
-    if(buf[pos] == '\r') {
-        buf[pos] = '\0';
-        return 1;
-    } else {
-        return 0;
-    }
-}
-
 void Handle_command(void *p1, const uint8_t* rx_buffer, sender_t sender)
 {
 	node_t *nodes = (node_t*)p1;

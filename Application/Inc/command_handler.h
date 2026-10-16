@@ -5,8 +5,6 @@
 
 typedef int(*sender_t)(uint8_t*, size_t);
 
-int Parse(uint8_t* buf, size_t pos);
-
 /** Commands handlers */
 #define HANDLER_NAME(prefix) prefix##_##handler
 #define HANDLER_PROTOTYPE(prefix) void HANDLER_NAME(prefix)(node_t *node, const uint8_t* rx_buffer, uint8_t* tx_buffer)
